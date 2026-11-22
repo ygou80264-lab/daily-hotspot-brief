@@ -148,6 +148,40 @@ def check_title_summary_overlap(title: str, summary: str) -> dict:
     }
 
 
+def build_focus_items(data: dict, limit: int = 5) -> list[dict]:
+    sections = data.get("sections", [])
+    all_items = [
+        item
+        for section in sections
+        for item in section.get("items", [])
+    ]
+    by_id = {item.get("id"): item for item in all_items if item.get("id")}
+    selected = []
+    selected_ids = set()
+
+    for top_item in data.get("top_3", []):
+        item_id = top_item.get("ref_id")
+        if item_id in by_id and item_id not in selected_ids:
+            selected.append(by_id[item_id])
+            selected_ids.add(item_id)
+
+    for item in all_items:
+        if len(selected) >= limit:
+            break
+        if item.get("importance") == "high" and item.get("id") not in selected_ids:
+            selected.append(item)
+            selected_ids.add(item.get("id"))
+
+    for item in all_items:
+        if len(selected) >= limit:
+            break
+        if item.get("id") not in selected_ids:
+            selected.append(item)
+            selected_ids.add(item.get("id"))
+
+    return selected[:limit]
+
+
 def clean_and_validate(data: dict, verify_https: bool = False) -> tuple[dict, list[str]]:
     warnings = []
     top3_ids = {item.get("ref_id") for item in data.get("top_3", []) if item.get("ref_id")}
@@ -195,6 +229,7 @@ def clean_and_validate(data: dict, verify_https: bool = False) -> tuple[dict, li
     data.setdefault("date", now_cn.strftime("%Y-%m-%d"))
     data["updated_at"] = now_cn.strftime("%H:%M")
     data["version"] = int(time.time())
+    data["focus_items"] = build_focus_items(data)
     return data, warnings
 
 
@@ -258,16 +293,27 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
     .tool-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
     h1 {{ margin: 8px 0 6px; font-size: 25px; line-height: 1.25; }}
     .meta {{ margin: 0; font-size: 13px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }}
-    .top3-card {{
+    .focus-card {{
       background: var(--high-bg); border: 1px solid var(--border);
       border-left: 4px solid var(--high-border); border-radius: 10px;
       padding: 14px 16px; margin-bottom: 18px;
     }}
-    .top3-label {{ font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }}
-    .top3-list {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }}
-    .top3-list a {{ display: flex; gap: 8px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 500; }}
-    .top3-list a:hover {{ color: var(--accent); }}
-    .top-num {{ color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }}
+    .focus-label {{ font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 10px; }}
+    .focus-list {{ display: grid; gap: 10px; }}
+    .focus-item {{ padding-top: 10px; border-top: 1px solid var(--border); }}
+    .focus-item:first-child {{ padding-top: 0; border-top: 0; }}
+    .focus-rank {{ color: var(--accent); font-size: 11px; font-weight: 750; }}
+    .focus-item h3 {{ margin: 3px 0 0; font-size: 15px; line-height: 1.45; }}
+    .focus-item p {{ margin: 4px 0 0; color: var(--muted); font-size: 13px; }}
+    .focus-item .src-link {{ display: inline-block; margin-top: 5px; }}
+    .full-brief {{ margin: 18px 0 0; }}
+    .full-brief > summary {{
+      cursor: pointer; padding: 12px 14px; border: 1px solid var(--border);
+      border-radius: 9px; background: var(--card); color: var(--accent);
+      font-size: 14px; font-weight: 700; list-style-position: inside;
+    }}
+    .full-brief[open] > summary {{ margin-bottom: 16px; }}
+    .full-count {{ float: right; color: var(--muted); font-weight: 500; }}
     nav.cat-nav {{
       position: sticky; top: 0; z-index: 10; background: var(--nav-bg);
       backdrop-filter: blur(8px); padding: 10px 0; margin: 0 -4px 18px;
@@ -336,9 +382,12 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
       </p>
     </header>
 
-    <div id="top3Mount"></div>
-    <nav class="cat-nav" id="navMount" aria-label="分类导航"></nav>
-    <main id="mainMount"></main>
+    <div id="focusMount"></div>
+    <details class="full-brief" id="fullBrief">
+      <summary>展开全部新闻 <span class="full-count" id="fullCount"></span></summary>
+      <nav class="cat-nav" id="navMount" aria-label="分类导航"></nav>
+      <main id="mainMount"></main>
+    </details>
 
     <footer>
       来源链接均已清洗核验 · 每 5 分钟自动检查更新 · <a href="#top">返回顶部 ↑</a>
@@ -384,17 +433,27 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
         document.getElementById("pageTitle").textContent = `${{data.date}} 每日热点简报`;
         document.getElementById("liveStatus").innerHTML =
           `<span class="live-dot"></span>更新于 ${{esc(data.updated_at || "--:--")}}`;
-        document.getElementById("metaCount").textContent = `${{sections.length}} 个领域 · ${{total}} 条核心事件`;
+        const allItems = sections.flatMap((s) => s.items || []);
+        const focusItems = data.focus_items?.length ? data.focus_items : allItems.slice(0, 5);
+        document.getElementById("metaCount").textContent =
+          `今天先看 ${{focusItems.length}} 条 · 共 ${{total}} 条`;
+        document.getElementById("fullCount").textContent = `${{total}} 条`;
 
-        const top3 = data.top_3 || [];
-        document.getElementById("top3Mount").innerHTML = top3.length ? `
-          <section class="top3-card" aria-label="今日核心速览">
-            <div class="top3-label">30 秒速览 · 今日 TOP 3</div>
-            <ol class="top3-list">
-              ${{top3.map((t, i) => `
-                <li><a href="#${{esc(t.ref_id)}}"><span class="top-num">0${{i + 1}}</span><span>${{esc(t.headline)}}</span></a></li>
+        document.getElementById("focusMount").innerHTML = focusItems.length ? `
+          <section class="focus-card" aria-label="今日优先阅读">
+            <div class="focus-label">先看这 ${{focusItems.length}} 条 · 其余新闻已折叠</div>
+            <div class="focus-list">
+              ${{focusItems.map((it, i) => `
+                <article class="focus-item">
+                  <span class="focus-rank">0${{i + 1}} · ${{i < 3 ? "重点" : "跟进"}}</span>
+                  <h3>${{esc(it.title)}}</h3>
+                  <p>${{esc(it.summary)}}</p>
+                  ${{it.impact ? `<p><strong>看点：</strong>${{esc(it.impact)}}</p>` : ""}}
+                  <a class="src-link" href="${{esc(it.url)}}" rel="noopener noreferrer"
+                     target="_blank">查看${{esc(it.source_name)}}原文 ↗</a>
+                </article>
               `).join("")}}
-            </ol>
+            </div>
           </section>` : "";
 
         document.getElementById("navMount").innerHTML = sections
