@@ -54,7 +54,7 @@ PWA_MANIFEST = {
     ],
 }
 
-SERVICE_WORKER = """const CACHE_NAME = "daily-brief-v1";
+SERVICE_WORKER = """const CACHE_NAME = "daily-brief-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -306,6 +306,42 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
     .focus-item h3 {{ margin: 3px 0 0; font-size: 15px; line-height: 1.45; }}
     .focus-item p {{ margin: 4px 0 0; color: var(--muted); font-size: 13px; }}
     .focus-item .src-link {{ display: inline-block; margin-top: 5px; }}
+    .industry-card {{
+      margin-bottom: 18px; padding: 16px; border-radius: 12px;
+      background: #123a42; color: #fff;
+    }}
+    .industry-card h2 {{ margin: 3px 0 6px; color: #fff; font-size: 22px; }}
+    .industry-kicker {{ margin: 0; color: #9ed3d2; font-size: 12px; font-weight: 750; }}
+    .industry-trigger {{ margin: 0 0 12px; color: rgba(255,255,255,.75); font-size: 13px; }}
+    .industry-flow {{ display: grid; gap: 8px; }}
+    .industry-stage {{
+      padding: 10px; border: 1px solid rgba(255,255,255,.16);
+      border-radius: 10px; background: rgba(255,255,255,.07);
+    }}
+    .industry-stage h3 {{ margin: 0 0 7px; color: #9ed3d2; font-size: 13px; }}
+    .industry-node {{
+      margin-top: 6px; border-radius: 8px; background: rgba(255,255,255,.1);
+    }}
+    .industry-node summary {{
+      padding: 8px 9px; cursor: pointer; font-size: 13px; font-weight: 650;
+      list-style-position: inside;
+    }}
+    .industry-node p {{
+      margin: 0; padding: 0 9px 8px; color: rgba(255,255,255,.82);
+      font-size: 12.5px; line-height: 1.6;
+    }}
+    .industry-analysis, .industry-concepts, .industry-question {{
+      margin-top: 10px; padding: 12px; border-radius: 10px;
+      background: rgba(255,255,255,.95); color: var(--text);
+    }}
+    .industry-analysis h3, .industry-concepts h3, .industry-question h3 {{
+      margin: 0 0 6px; color: var(--accent); font-size: 14px;
+    }}
+    .industry-analysis p, .industry-concepts p, .industry-question p {{
+      margin: 4px 0; color: var(--muted); font-size: 13px; line-height: 1.65;
+    }}
+    .industry-sources {{ margin: 8px 0 0; font-size: 12px; }}
+    .industry-sources a {{ color: #bfe9e6; margin-right: 10px; }}
     .full-brief {{ margin: 18px 0 0; }}
     .full-brief > summary {{
       cursor: pointer; padding: 12px 14px; border: 1px solid var(--border);
@@ -382,6 +418,7 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
       </p>
     </header>
 
+    <div id="industryMount"></div>
     <div id="focusMount"></div>
     <details class="full-brief" id="fullBrief">
       <summary>展开全部新闻 <span class="full-count" id="fullCount"></span></summary>
@@ -423,6 +460,47 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
         localStorage.setItem(getStorageKey(currentData.date), JSON.stringify([...readSet]));
       }}
 
+      function renderIndustry(chain) {{
+        if (!chain || !Array.isArray(chain.stages) || !chain.stages.length) return "";
+        const stages = chain.stages.map((stage) => `
+          <section class="industry-stage">
+            <h3>${{esc(stage.layer)}}</h3>
+            ${{(stage.items || []).map((item) => `
+              <details class="industry-node">
+                <summary>产业链节点解释 · ${{esc(item.name)}} · 点击展开</summary>
+                <p><b>它做什么：</b>${{esc(item.role)}}</p>
+                <p><b>说白了：</b>${{esc(item.plain)}}</p>
+                <p><b>典型角色：</b>${{esc((item.examples || []).join("、"))}}</p>
+                <p><b>可能卡点：</b>${{esc(item.bottleneck)}}</p>
+                <p><b>议价权：</b>${{esc(item.power)}}</p>
+              </details>
+            `).join("")}}
+          </section>
+        `).join("");
+        const sources = (chain.sources || []).map((source) =>
+          `<a href="${{esc(source.url)}}" target="_blank" rel="noopener noreferrer">${{esc(source.name)}}原文 ↗</a>`
+        ).join("");
+        const concepts = (chain.concepts || []).map((concept) =>
+          `<p><b>${{esc(concept.term)}}</b>：${{esc(concept.plain)}}</p>`
+        ).join("");
+
+        return `
+          <section class="industry-card" aria-label="每日产业链分析">
+            <p class="industry-kicker">每日产业链练习 · 今天换一条链</p>
+            <h2>${{esc(chain.title)}}</h2>
+            <p class="industry-trigger">${{esc(chain.trigger)}}</p>
+            <div class="industry-sources">${{sources}}</div>
+            <div class="industry-flow">${{stages}}</div>
+            <div class="industry-analysis">
+              <h3>变化点</h3><p>${{esc(chain.change)}}</p>
+              <h3>透过现象看本质</h3><p>${{esc(chain.essence)}}</p>
+              <h3>什么会推翻判断</h3><p>${{esc(chain.counter_evidence)}}</p>
+            </div>
+            <div class="industry-concepts"><h3>概念与白话</h3>${{concepts}}</div>
+            <div class="industry-question"><h3>轮到你判断</h3><p>${{esc(chain.question)}}</p></div>
+          </section>`;
+      }}
+
       function renderBrief(data) {{
         currentData = data;
         loadReadSet(data.date);
@@ -438,6 +516,7 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
         document.getElementById("metaCount").textContent =
           `今天先看 ${{focusItems.length}} 条 · 共 ${{total}} 条`;
         document.getElementById("fullCount").textContent = `${{total}} 条`;
+        document.getElementById("industryMount").innerHTML = renderIndustry(data.industry_chain);
 
         document.getElementById("focusMount").innerHTML = focusItems.length ? `
           <section class="focus-card" aria-label="今日优先阅读">
@@ -595,6 +674,73 @@ SAMPLE_DATA = {
     "top_3": [
         {"ref_id": "world-01", "headline": "示例：配置 DEEPSEEK_API_KEY 后将自动抓取每日真实热点"},
     ],
+    "industry_chain": {
+        "title": "AI芯片与算力产业链",
+        "trigger": "示例：用AI模型调用增长和免费额度收紧，练习判断算力供给与需求。",
+        "sources": [{"name": "GitHub", "url": "https://github.com"}],
+        "stages": [
+            {
+                "layer": "上游",
+                "items": [
+                    {
+                        "name": "芯片与设备",
+                        "role": "提供算力芯片和制造设备",
+                        "plain": "这是AI运行需要的发动机和生产线。",
+                        "examples": ["芯片设计公司", "半导体设备公司"],
+                        "bottleneck": "先进芯片与设备供给",
+                        "power": "越难替代，议价权越强",
+                    }
+                ],
+            },
+            {
+                "layer": "中游",
+                "items": [
+                    {
+                        "name": "云平台与模型推理",
+                        "role": "把芯片变成可调用的模型服务",
+                        "plain": "企业按使用量租算力、调用模型。",
+                        "examples": ["云服务商", "模型API平台"],
+                        "bottleneck": "推理成本和稳定性",
+                        "power": "规模与客户入口带来优势",
+                    }
+                ],
+            },
+            {
+                "layer": "下游",
+                "items": [
+                    {
+                        "name": "AI应用",
+                        "role": "把模型能力装入办公、编程和行业工具",
+                        "plain": "用户看到的是能完成任务的软件。",
+                        "examples": ["办公工具", "编程工具"],
+                        "bottleneck": "可靠性和付费意愿",
+                        "power": "掌握用户入口与行业数据更重要",
+                    }
+                ],
+            },
+            {
+                "layer": "最终用户",
+                "items": [
+                    {
+                        "name": "个人与企业",
+                        "role": "使用AI服务并决定是否付费",
+                        "plain": "需求大小最终决定上游投入能否收回。",
+                        "examples": ["学生", "企业客户"],
+                        "bottleneck": "信任、价格和实际效果",
+                        "power": "用户可以切换或停止使用",
+                    }
+                ],
+            },
+        ],
+        "change": "模型调用增加会推高算力需求，但仅凭限流不能断定瓶颈一定在芯片。",
+        "essence": "需求增长不代表每一环都赚钱，价值通常流向更稀缺、更难替代的环节。",
+        "counter_evidence": "若供应充足、服务快速降价且平台利润稳定，供给瓶颈判断就不成立。",
+        "question": "如果AI用户翻倍，你认为最先紧张的是芯片、电力、云平台还是应用公司现金？",
+        "concepts": [
+            {"term": "上游议价权", "plain": "少数公司掌握关键供给时，更容易涨价。"},
+            {"term": "算力成本", "plain": "AI回答越多、越长，消耗的芯片、电力与时间越多。"},
+        ],
+    },
     "sections": [
         {
             "id": "world",
