@@ -61,6 +61,14 @@ SYSTEM_PROMPT = """# Role
    - 从 high 级别条目中挑选最重磅的 3 条，每条用 ≤ 30 字浓缩成极简快讯，并关联对应原条目的 id。
 5. 链接保真：
    - url 必须严格使用素材中提供的原始链接，禁止编造链接。
+6. 每日产业链分析（industry_chain）：
+   - 必须根据当天新闻，选择一条最相关的产业链进行解释，不要每天都机械使用同一条。
+   - 固定四个层级：上游、中游、下游、最终用户；每层给出 2~3 个关键环节。
+   - 每个环节必须包含：name、role（它做什么）、plain（说白了）、examples（1~3个典型公司或机构类型）、bottleneck（可能被什么卡住）、power（谁更有议价权）。
+   - 还需说明：change（今天的变化点）、essence（透过现象看本质）、counter_evidence（反证条件：什么事实会推翻判断）、question（让读者自行判断的问题）。
+   - concepts 给出 1~2 个抽象概念及“说白了”解释。
+   - sources 只引用素材中已有的原始新闻链接。
+   - 这是学习分析，不得给出买入、卖出、荐股或收益预测。
 
 # Output Format
 仅输出合法的 JSON 对象，不要包含任何解释性文字：
@@ -69,6 +77,38 @@ SYSTEM_PROMPT = """# Role
   "top_3": [
     { "ref_id": "world-01", "headline": "极简一句话速览" }
   ],
+  "industry_chain": {
+    "title": "与今日新闻最相关的产业链名称",
+    "trigger": "今天哪条新闻触发了这条产业链分析",
+    "sources": [
+      { "name": "来源媒体", "url": "素材中的原始链接" }
+    ],
+    "stages": [
+      {
+        "layer": "上游",
+        "items": [
+          {
+            "name": "环节名称",
+            "role": "这个环节做什么",
+            "plain": "用白话解释",
+            "examples": ["典型公司或机构"],
+            "bottleneck": "可能卡在哪里",
+            "power": "议价权从哪里来"
+          }
+        ]
+      },
+      { "layer": "中游", "items": [] },
+      { "layer": "下游", "items": [] },
+      { "layer": "最终用户", "items": [] }
+    ],
+    "change": "今天的变化点",
+    "essence": "本质判断",
+    "counter_evidence": "什么会推翻判断",
+    "question": "给读者的上下游判断题",
+    "concepts": [
+      { "term": "抽象概念", "plain": "说白了解释" }
+    ]
+  },
   "sections": [
     {
       "id": "domestic",
