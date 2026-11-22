@@ -369,7 +369,7 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
           }});
           lines.push("");
         }});
-        return lines.join("\n").trim();
+        return lines.join("\\n").trim();
       }}
 
       const refreshBtn = document.getElementById("refreshBtn");
