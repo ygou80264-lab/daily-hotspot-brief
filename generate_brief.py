@@ -8,6 +8,7 @@
 import argparse
 import json
 import re
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,82 @@ CANONICAL_SECTIONS = {
     "ai": "AI与政策",
     "business": "财经/商业",
 }
+
+PWA_ICON_SIZES = (192, 512)
+
+PWA_MANIFEST = {
+    "name": "每日热点简报",
+    "short_name": "每日热点",
+    "description": "每天自动更新的五类热点简报",
+    "lang": "zh-CN",
+    "id": "/",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#f8f9fa",
+    "theme_color": "#2563eb",
+    "icons": [
+        {
+            "src": f"./icon-{size}.png",
+            "sizes": f"{size}x{size}",
+            "type": "image/png",
+            "purpose": purpose,
+        }
+        for size in PWA_ICON_SIZES
+        for purpose in ("any", "maskable")
+    ],
+}
+
+SERVICE_WORKER = """const CACHE_NAME = "daily-brief-v1";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(async () => {
+        return (await caches.match(event.request)) || (await caches.match("./index.html"));
+      })
+  );
+});
+"""
+
+
+def write_pwa_assets(output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "manifest.webmanifest").write_text(
+        json.dumps(PWA_MANIFEST, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "sw.js").write_text(SERVICE_WORKER, encoding="utf-8")
+
+    asset_dir = Path(__file__).resolve().parent / "assets"
+    for size in PWA_ICON_SIZES:
+        source = asset_dir / f"icon-{size}.png"
+        if source.exists():
+            shutil.copy2(source, output_dir / source.name)
 
 
 def clean_url(url: str, verify_https: bool = False) -> str:
@@ -130,8 +207,11 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="每日简报" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>每日热点简报</title>
   <style>
     :root {{
@@ -437,6 +517,12 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
         }}
       }});
 
+      if ("serviceWorker" in navigator) {{
+        window.addEventListener("load", () => {{
+          navigator.serviceWorker.register("./sw.js").catch(() => {{}});
+        }});
+      }}
+
       renderBrief(currentData);
       checkUpdate(false);
     }})();
@@ -483,6 +569,7 @@ def main():
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
+    write_pwa_assets(Path(args.output).parent)
     Path(args.json_out).write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
     Path(args.output).write_text(render_html(cleaned, json_url=f"./{Path(args.json_out).name}"), encoding="utf-8")
 
