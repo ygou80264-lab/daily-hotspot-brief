@@ -1,0 +1,66 @@
+name: Daily Hotspot Brief
+
+on:
+  # 每天 UTC 23:45 运行（北京时间 07:45，避开整点排队，确保 08:00 前可看）
+  schedule:
+    - cron: '45 23 * * *'
+  # 支持在手机上随时手动点 "Run workflow" 立即更新
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. 拉取仓库代码
+        uses: actions/checkout@v4
+
+      - name: 2. 配置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. 抓取新闻并调用 DeepSeek 生成 brief.json
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -n "$DEEPSEEK_API_KEY" ]; then
+            python fetch_and_summarize.py -o brief.json
+          else
+            echo "未配置 DEEPSEEK_API_KEY，跳过抓取，将使用示例数据渲染测试页。"
+          fi
+
+      - name: 4. 清洗数据并生成网页与实时 JSON
+        run: |
+          mkdir -p dist
+          if [ -f "brief.json" ]; then
+            python generate_brief.py -i brief.json -o dist/index.html --json-out dist/latest.json --verify-https
+          else
+            python generate_brief.py -o dist/index.html --json-out dist/latest.json
+          fi
+
+      - name: 5. 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: 6. 打包 Pages 静态产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: 7. 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
