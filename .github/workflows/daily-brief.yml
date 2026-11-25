@@ -11,6 +11,8 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
+  issues: write
 
 concurrency:
   group: "pages"
@@ -64,3 +66,35 @@ jobs:
       - name: 7. 部署到 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  retry-failed-deployment:
+    needs: build-and-deploy
+    if: failure() && github.run_attempt < 3
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: 自动重试失败任务
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/rerun-failed-jobs"
+
+  failure-notice:
+    needs:
+      - build-and-deploy
+      - retry-failed-deployment
+    if: always() && needs.build-and-deploy.result == 'failure' && github.run_attempt >= 3
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 创建最终失败提示
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "每日简报在 3 次尝试后仍未更新" \
+            --body "GitHub Actions 自动部署连续失败。请检查运行日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
