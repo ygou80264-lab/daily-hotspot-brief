@@ -36,7 +36,7 @@ PWA_MANIFEST = {
     "short_name": "每日热点",
     "description": "每天自动更新的五类热点简报",
     "lang": "zh-CN",
-    "id": "/",
+    "id": "./",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
@@ -54,7 +54,7 @@ PWA_MANIFEST = {
     ],
 }
 
-SERVICE_WORKER = """const CACHE_NAME = "daily-brief-v2";
+SERVICE_WORKER = """const CACHE_NAME = "daily-brief-v3";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -293,6 +293,15 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
     .tool-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
     h1 {{ margin: 8px 0 6px; font-size: 25px; line-height: 1.25; }}
     .meta {{ margin: 0; font-size: 13px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }}
+    .install-btn {{
+      margin-top: 10px; padding: 7px 12px; border: 1px solid var(--accent);
+      border-radius: 7px; background: var(--card); color: var(--accent);
+      font-size: 13px; font-weight: 700; cursor: pointer;
+    }}
+    .install-hint {{
+      margin: 7px 0 0; padding: 9px 11px; border-radius: 8px;
+      background: var(--high-bg); color: var(--muted); font-size: 12px; line-height: 1.6;
+    }}
     .focus-card {{
       background: var(--high-bg); border: 1px solid var(--border);
       border-left: 4px solid var(--high-border); border-radius: 10px;
@@ -416,6 +425,8 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
         <span id="metaCount">加载中...</span>
         <span id="progressText">已读 0/0</span>
       </p>
+      <button type="button" class="install-btn" id="installBtn">安装到桌面</button>
+      <p class="install-hint" id="installHint" hidden></p>
     </header>
 
     <div id="industryMount"></div>
@@ -437,6 +448,35 @@ def render_html(data: dict, json_url: str = "./latest.json") -> str:
       const POLL_MS = 5 * 60 * 1000;
       let currentData = {initial_json};
       let readSet = new Set();
+      let deferredInstallPrompt = null;
+
+      const installBtn = document.getElementById("installBtn");
+      const installHint = document.getElementById("installHint");
+      if (window.matchMedia("(display-mode: standalone)").matches) {{
+        installBtn.hidden = true;
+      }}
+      window.addEventListener("beforeinstallprompt", (event) => {{
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        installBtn.textContent = "安装应用";
+      }});
+      installBtn.addEventListener("click", async () => {{
+        if (deferredInstallPrompt) {{
+          deferredInstallPrompt.prompt();
+          await deferredInstallPrompt.userChoice;
+          deferredInstallPrompt = null;
+          return;
+        }}
+        const ua = navigator.userAgent;
+        installHint.hidden = false;
+        if (/MicroMessenger/i.test(ua)) {{
+          installHint.textContent = "微信内置浏览器不能安装。请点右上角“…” → 在浏览器打开，再用 Chrome 安装。";
+        }} else if (/Chrome/i.test(ua)) {{
+          installHint.textContent = "请刷新页面并等待几秒，再点 Chrome 右上角“⋮” → 安装应用或添加到主屏幕。";
+        }} else {{
+          installHint.textContent = "请复制本页网址到 Chrome 打开，然后点击右上角菜单添加到主屏幕。";
+        }}
+      }});
 
       const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({{
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
